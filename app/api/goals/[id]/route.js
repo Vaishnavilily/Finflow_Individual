@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Goal from '@/lib/models/Goal';
+import User from '@/lib/models/user';
 
 export async function DELETE(request, { params }) {
   try {
@@ -13,7 +14,11 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: 'Missing authId' }, { status: 400 });
     }
 
-    await Goal.findOneAndDelete({ _id: id, ownerAuthId: authId });
+    const deleted = await Goal.findOneAndDelete({ _id: id, ownerAuthId: authId });
+    if (!deleted) {
+      return NextResponse.json({ error: 'Goal not found' }, { status: 404 });
+    }
+    await User.updateOne({ authId }, { $pull: { goals: id } });
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -34,8 +39,11 @@ export async function PATCH(request, { params }) {
     const goal = await Goal.findOneAndUpdate(
       { _id: id, ownerAuthId: authId },
       updates,
-      { new: true }
+      { new: true, runValidators: true }
     );
+    if (!goal) {
+      return NextResponse.json({ error: 'Goal not found' }, { status: 404 });
+    }
     return NextResponse.json(goal);
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

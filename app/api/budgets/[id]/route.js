@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Budget from '@/lib/models/Budget';
+import User from '@/lib/models/user';
 
 export async function DELETE(request, { params }) {
   try {
@@ -13,7 +14,11 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: 'Missing authId' }, { status: 400 });
     }
 
-    await Budget.findOneAndDelete({ _id: id, ownerAuthId: authId });
+    const deleted = await Budget.findOneAndDelete({ _id: id, ownerAuthId: authId });
+    if (!deleted) {
+      return NextResponse.json({ error: 'Budget not found' }, { status: 404 });
+    }
+    await User.updateOne({ authId }, { $pull: { budgets: id } });
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -34,8 +39,11 @@ export async function PATCH(request, { params }) {
     const budget = await Budget.findOneAndUpdate(
       { _id: id, ownerAuthId: authId },
       updates,
-      { new: true }
+      { new: true, runValidators: true }
     );
+    if (!budget) {
+      return NextResponse.json({ error: 'Budget not found' }, { status: 404 });
+    }
     return NextResponse.json(budget);
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

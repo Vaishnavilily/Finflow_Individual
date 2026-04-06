@@ -12,8 +12,7 @@ function normalizePayload(payload = {}) {
     payload.authId ||
     payload.userId ||
     payload.id ||
-    payload.sub ||
-    (payload.email ? String(payload.email).toLowerCase() : '');
+    payload.sub;
 
   return {
     authId: authId ? String(authId) : '',
@@ -50,8 +49,6 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const payload = normalizePayload({
       authId: searchParams.get('authId'),
-      email: searchParams.get('email'),
-      name: searchParams.get('name'),
     });
 
     if (!payload.authId) {
@@ -64,16 +61,12 @@ export async function GET(request) {
     if (!user) {
       user = await User.create({
         authId: payload.authId,
-        email: payload.email || undefined,
-        name: payload.name || '',
         lastLoginAt: new Date(),
       });
       isNewUser = true;
     } else {
       const updates = { lastLoginAt: new Date() };
-      if (payload.name && !user.name) updates.name = payload.name;
-      if (payload.email && !user.email) updates.email = payload.email;
-      user = await User.findByIdAndUpdate(user._id, updates, { new: true });
+      user = await User.findByIdAndUpdate(user._id, updates, { new: true, runValidators: true });
     }
 
     return NextResponse.json({ isNewUser, profile: serializeUser(user) });
@@ -105,7 +98,7 @@ export async function PATCH(request) {
     const user = await User.findOneAndUpdate(
       { authId: payload.authId },
       { $set: updates },
-      { new: true }
+      { new: true, runValidators: true }
     );
 
     if (!user) {

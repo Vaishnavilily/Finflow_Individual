@@ -5,14 +5,13 @@ import Link from 'next/link';
 import { useAuthUser } from '@/lib/useAuthUser';
 
 const PROFILE = {
-  name: 'User',
-  email: 'user@example.com',
-  phone: '+91 98765 43210',
-
-  dob: '1990-01-15',
-  city: 'Hyderabad',
-  occupation: 'Software Engineer',
-  annualIncome: 1000000,
+  name: '',
+  email: '',
+  phone: '',
+  dob: '',
+  city: '',
+  occupation: '',
+  annualIncome: 0,
 };
 
 const STATS = [
@@ -48,15 +47,13 @@ export default function ProfilePage() {
 
       const params = new URLSearchParams({
         authId: authUser.authId,
-        email: authUser.email || '',
-        name: authUser.name || '',
       });
 
       const res = await fetch(`/api/profile?${params.toString()}`);
       const data = await res.json();
       const nextProfile = data?.profile
         ? { ...PROFILE, ...data.profile, dob: data.profile.dob ? new Date(data.profile.dob).toISOString().split('T')[0] : '' }
-        : { ...PROFILE, ...(authUser || {}) };
+        : { ...PROFILE };
 
       setProfile(nextProfile);
       setForm(nextProfile);
@@ -110,15 +107,15 @@ export default function ProfilePage() {
             fontSize: 32, fontWeight: 800, color: 'white', flexShrink: 0,
             boxShadow: '0 4px 16px rgba(0,76,140,0.25)'
           }}>
-            {profile.name.charAt(0).toUpperCase()}
+            {(profile.name || '?').charAt(0).toUpperCase()}
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{profile.name}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{profile.name || '—'}</div>
             <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>{profile.email}</div>
             <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
               <span className="badge" style={{ background: 'var(--primary-light)', color: 'var(--primary)' }}>Individual Plan</span>
               <span className="badge" style={{ background: 'var(--success-light)', color: 'var(--success)' }}>✓ Active</span>
-              <span className="badge badge-other">{profile.city}</span>
+              <span className="badge badge-other">{profile.city || '—'}</span>
             </div>
           </div>
           <button className="btn btn-outline" onClick={() => { setEditing(!editing); setForm(profile); }}>

@@ -38,7 +38,7 @@ export async function PUT(request, { params }) {
     const txn = await Transaction.findOneAndUpdate(
       { _id: id, ownerAuthId: authId },
       updates,
-      { new: true }
+      { new: true, runValidators: true }
     );
     if (!txn) {
       return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
@@ -68,7 +68,7 @@ export async function DELETE(request, { params }) {
 
     // Remove reference from user
     await User.updateOne(
-      { authId, transactions: id },
+      { authId },
       { $pull: { transactions: id } }
     );
 

@@ -23,8 +23,6 @@ export default function DashboardPage() {
 
     const params = new URLSearchParams({
       authId: authUser.authId,
-      email: authUser.email || '',
-      name: authUser.name || '',
     });
 
     let cancelled = false;
@@ -70,15 +68,15 @@ export default function DashboardPage() {
   const barData = {
     labels: MONTHS,
     datasets: [
-      { label: 'Income', data: [72000, 75000, 80000, 78000, 82000, totalIncome || 85000], backgroundColor: 'rgba(22,163,74,0.7)', borderRadius: 4 },
-      { label: 'Expenses', data: [48000, 50000, 46000, 52000, 49000, totalExpenses || 52400], backgroundColor: 'rgba(220,38,38,0.7)', borderRadius: 4 },
+      { label: 'Income', data: [0, 0, 0, 0, 0, totalIncome], backgroundColor: 'rgba(22,163,74,0.7)', borderRadius: 4 },
+      { label: 'Expenses', data: [0, 0, 0, 0, 0, totalExpenses], backgroundColor: 'rgba(220,38,38,0.7)', borderRadius: 4 },
     ]
   };
 
   const donutData = {
-    labels: catLabels.length ? catLabels : ['Housing', 'Food', 'Transport', 'Shopping', 'Investment', 'Other'],
+    labels: catLabels.length ? catLabels : ['No Data'],
     datasets: [{
-      data: catData.length ? catData : [18000, 9200, 3200, 10500, 12000, 2400],
+      data: catData.length ? catData : [0],
       backgroundColor: catColors,
       borderWidth: 0,
     }]
@@ -115,22 +113,22 @@ export default function DashboardPage() {
             <div className="stats-grid">
               <div className="stat-card">
                 <div className="stat-label">Monthly Income</div>
-                <div className="stat-value">{fmt(totalIncome || 85000)}</div>
+                <div className="stat-value">{fmt(totalIncome)}</div>
                 <div className="stat-sub up">↑ 5.2% from last month</div>
               </div>
               <div className="stat-card">
                 <div className="stat-label">Total Expenses</div>
-                <div className="stat-value">{fmt(totalExpenses || 52400)}</div>
+                <div className="stat-value">{fmt(totalExpenses)}</div>
                 <div className="stat-sub down">↑ 8.1% over budget</div>
               </div>
               <div className="stat-card">
                 <div className="stat-label">Savings Rate</div>
-                <div className="stat-value">{savingsRate || 38.4}%</div>
+                <div className="stat-value">{savingsRate}%</div>
                 <div className="stat-sub up">↑ 2.1% vs last month</div>
               </div>
               <div className="stat-card">
                 <div className="stat-label">Net Worth</div>
-                <div className="stat-value">{netWorth > 0 ? fmt(netWorth) : '₹4.2L'}</div>
+                <div className="stat-value">{fmt(netWorth)}</div>
                 <div className="stat-sub up">↑ ₹18,000 this month</div>
               </div>
             </div>
@@ -176,19 +174,7 @@ export default function DashboardPage() {
               <div className="card">
                 <div className="card-title">Goals Progress</div>
                 {safeGoals.length === 0 ? (
-                  <div>
-                    {[{ name: 'Emergency Fund', cur: 45000, target: 100000 }, { name: 'New Laptop', cur: 28000, target: 60000 }, { name: 'Europe Trip', cur: 12000, target: 150000 }].map((g, i) => (
-                      <div key={i} style={{ marginBottom: 14 }}>
-                        <div className="flex-between mb-16" style={{ marginBottom: 4 }}>
-                          <span style={{ fontSize: 13, fontWeight: 500 }}>{g.name}</span>
-                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>₹{g.cur.toLocaleString('en-IN')} / ₹{g.target.toLocaleString('en-IN')}</span>
-                        </div>
-                        <div className="progress-bar-wrap">
-                          <div className="progress-bar-fill" style={{ width: `${Math.min((g.cur / g.target) * 100, 100)}%`, background: 'var(--primary)' }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  <p className="text-muted" style={{ fontSize: 13 }}>No goals yet. Add your first goal from the Goals page.</p>
                 ) : (
                   safeGoals.slice(0, 4).map((g) => {
                     const pct = Math.min((g.currentAmount / g.targetAmount) * 100, 100);
