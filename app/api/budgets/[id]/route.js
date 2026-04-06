@@ -5,7 +5,7 @@ import Budget from '@/lib/models/Budget';
 export async function DELETE(request, { params }) {
   try {
     await connectDB();
-    const { id } = await params;
+    const { id } = params;
     await Budget.findByIdAndDelete(id);
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -16,7 +16,7 @@ export async function DELETE(request, { params }) {
 export async function PATCH(request, { params }) {
   try {
     await connectDB();
-    const { id } = await params;
+    const { id } = params;
     const body = await request.json();
     const budget = await Budget.findByIdAndUpdate(id, body, { new: true });
     return NextResponse.json(budget);
