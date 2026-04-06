@@ -7,7 +7,14 @@ export async function GET(request, { params }) {
   try {
     await connectDB();
     const { id } = params;
-    const txn = await Transaction.findById(id);
+    const { searchParams } = new URL(request.url);
+    const authId = searchParams.get('authId');
+
+    if (!authId) {
+      return NextResponse.json({ error: 'Missing authId' }, { status: 400 });
+    }
+
+    const txn = await Transaction.findOne({ _id: id, ownerAuthId: authId });
     if (!txn) {
       return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
     }
@@ -22,8 +29,17 @@ export async function PUT(request, { params }) {
     await connectDB();
     const { id } = params;
     const body = await request.json();
+    const { authId, ...updates } = body;
 
-    const txn = await Transaction.findByIdAndUpdate(id, body, { new: true });
+    if (!authId) {
+      return NextResponse.json({ error: 'Missing authId' }, { status: 400 });
+    }
+
+    const txn = await Transaction.findOneAndUpdate(
+      { _id: id, ownerAuthId: authId },
+      updates,
+      { new: true }
+    );
     if (!txn) {
       return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
     }
@@ -38,15 +54,21 @@ export async function DELETE(request, { params }) {
   try {
     await connectDB();
     const { id } = params;
+    const { searchParams } = new URL(request.url);
+    const authId = searchParams.get('authId');
 
-    const txn = await Transaction.findByIdAndDelete(id);
+    if (!authId) {
+      return NextResponse.json({ error: 'Missing authId' }, { status: 400 });
+    }
+
+    const txn = await Transaction.findOneAndDelete({ _id: id, ownerAuthId: authId });
     if (!txn) {
       return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
     }
 
     // Remove reference from user
     await User.updateOne(
-      { transactions: id },
+      { authId, transactions: id },
       { $pull: { transactions: id } }
     );
 

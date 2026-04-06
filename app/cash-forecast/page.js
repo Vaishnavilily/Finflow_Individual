@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import TopBar from '@/components/TopBar';
+import { useAuthUser } from '@/lib/useAuthUser';
 import { Line } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler } from 'chart.js';
 
@@ -17,10 +18,14 @@ const getNextMonths = (n) => {
 };
 
 export default function CashForecastPage() {
+  const { authUser, authReady } = useAuthUser();
   const [transactions, setTransactions] = useState([]);
   useEffect(() => {
-    fetch('/api/transactions').then(r => r.json()).then(d => setTransactions(Array.isArray(d) ? d : []));
-  }, []);
+    if (!authReady || !authUser?.authId) return;
+    fetch(`/api/transactions?authId=${encodeURIComponent(authUser.authId)}`)
+      .then(r => r.json())
+      .then(d => setTransactions(Array.isArray(d) ? d : []));
+  }, [authReady, authUser]);
 
   const avgIncome = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0) || 85000;
   const avgExpense = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0) || 52400;
@@ -46,8 +51,11 @@ export default function CashForecastPage() {
   const fmt = (n) => `₹${Number(n).toLocaleString('en-IN')}`;
 
   // Cumulative savings
-  let cumSavings = 0;
-  const savingsAcc = incomeData.map((inc, i) => { cumSavings += (inc - expenseData[i]); return cumSavings; });
+  const savingsAcc = incomeData.reduce((acc, inc, i) => {
+    const previous = acc.length ? acc[acc.length - 1] : 0;
+    acc.push(previous + (inc - expenseData[i]));
+    return acc;
+  }, []);
 
   const savingsLineData = {
     labels: months,

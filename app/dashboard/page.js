@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import TopBar from '@/components/TopBar';
+import { useAuthUser } from '@/lib/useAuthUser';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import {
   Chart as ChartJS, CategoryScale, LinearScale, BarElement,
@@ -12,29 +13,54 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Le
 const MONTHS = ['Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar'];
 
 export default function DashboardPage() {
-  const [transactions, setTransactions] = useState([]);
-  const [goals, setGoals] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { authUser, authReady } = useAuthUser();
+  const [transactions, setTransactions] = useState(null);
+  const [goals, setGoals] = useState(null);
+  const [isNewUser, setIsNewUser] = useState(false);
 
   useEffect(() => {
+    if (!authReady || !authUser?.authId) return;
+
+    const params = new URLSearchParams({
+      authId: authUser.authId,
+      email: authUser.email || '',
+      name: authUser.name || '',
+    });
+
+    let cancelled = false;
+
     Promise.all([
-      fetch('/api/transactions').then(r => r.json()),
-      fetch('/api/goals').then(r => r.json()),
-    ]).then(([txns, gls]) => {
+      fetch(`/api/profile?${params.toString()}`).then(r => r.json()),
+      fetch(`/api/transactions?authId=${encodeURIComponent(authUser.authId)}`).then(r => r.json()),
+      fetch(`/api/goals?authId=${encodeURIComponent(authUser.authId)}`).then(r => r.json()),
+    ]).then(([profileRes, txns, gls]) => {
+      if (cancelled) return;
+      setIsNewUser(Boolean(profileRes?.isNewUser));
       setTransactions(Array.isArray(txns) ? txns : []);
       setGoals(Array.isArray(gls) ? gls : []);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, []);
+    }).catch(() => {
+      if (cancelled) return;
+      setTransactions([]);
+      setGoals([]);
+    });
 
-  const totalIncome = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-  const totalExpenses = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, authUser]);
+
+  const loading = Boolean(authReady && authUser?.authId && (transactions === null || goals === null));
+  const safeTransactions = Array.isArray(transactions) ? transactions : [];
+  const safeGoals = Array.isArray(goals) ? goals : [];
+
+  const totalIncome = safeTransactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const totalExpenses = safeTransactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
   const netWorth = totalIncome - totalExpenses;
   const savingsRate = totalIncome > 0 ? (((totalIncome - totalExpenses) / totalIncome) * 100).toFixed(1) : 0;
 
   // Category spending for donut
   const categoryMap = {};
-  transactions.filter(t => t.type === 'expense').forEach(t => {
+  safeTransactions.filter(t => t.type === 'expense').forEach(t => {
     categoryMap[t.category] = (categoryMap[t.category] || 0) + t.amount;
   });
   const catLabels = Object.keys(categoryMap);
@@ -69,7 +95,7 @@ export default function DashboardPage() {
   };
 
   const fmt = (n) => `₹${Number(n).toLocaleString('en-IN')}`;
-  const recent = transactions.slice(0, 6);
+  const recent = safeTransactions.slice(0, 6);
 
   const categoryBadge = (cat) => {
     const m = { Income: 'income', Food: 'food', Loan: 'loan', Investment: 'invest', Utilities: 'utility', Shopping: 'shopping', Entertainment: 'entertain', Transport: 'transport', Healthcare: 'health' };
@@ -109,6 +135,22 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            {!authUser?.authId && (
+              <div className="card mb-20">
+                <p className="text-muted" style={{ fontSize: 13 }}>
+                  We could not identify your login session. Please sign in again from the gateway app.
+                </p>
+              </div>
+            )}
+
+            {isNewUser && (
+              <div className="card mb-20">
+                <p className="text-muted" style={{ fontSize: 13 }}>
+                  Welcome! Your account is new, so no financial data exists yet. Add budgets, goals, and transactions to get started.
+                </p>
+              </div>
+            )}
+
             <div className="charts-grid">
               <div className="card">
                 <div className="card-title">
@@ -133,7 +175,7 @@ export default function DashboardPage() {
             <div className="charts-grid-equal" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div className="card">
                 <div className="card-title">Goals Progress</div>
-                {goals.length === 0 ? (
+                {safeGoals.length === 0 ? (
                   <div>
                     {[{ name: 'Emergency Fund', cur: 45000, target: 100000 }, { name: 'New Laptop', cur: 28000, target: 60000 }, { name: 'Europe Trip', cur: 12000, target: 150000 }].map((g, i) => (
                       <div key={i} style={{ marginBottom: 14 }}>
@@ -148,7 +190,7 @@ export default function DashboardPage() {
                     ))}
                   </div>
                 ) : (
-                  goals.slice(0, 4).map((g) => {
+                  safeGoals.slice(0, 4).map((g) => {
                     const pct = Math.min((g.currentAmount / g.targetAmount) * 100, 100);
                     return (
                       <div key={g._id} style={{ marginBottom: 14 }}>

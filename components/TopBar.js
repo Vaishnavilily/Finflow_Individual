@@ -1,12 +1,13 @@
 'use client';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useAuthUser } from '@/lib/useAuthUser';
 
 export default function TopBar({ title, subtitle }) {
-  const router = useRouter();
+  const { authUser } = useAuthUser();
   const today = new Date().toLocaleDateString('en-IN', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   });
+  const avatarLabel = (authUser?.name || authUser?.email || 'U').charAt(0).toUpperCase();
 
   return (
     <div className="topbar">
@@ -21,7 +22,7 @@ export default function TopBar({ title, subtitle }) {
           </svg>
         </Link>
         <Link href="/profile" style={{ textDecoration: 'none' }}>
-          <div className="topbar-avatar" title="My Profile">U</div>
+          <div className="topbar-avatar" title="My Profile">{avatarLabel}</div>
         </Link>
       </div>
     </div>

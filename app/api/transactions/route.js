@@ -7,20 +7,38 @@ export async function GET(request) {
   try {
     await connectDB();
     const { searchParams } = new URL(request.url);
-    const authId = searchParams.get('authId'); // pass ?authId=... from frontend
+    const authId = searchParams.get('authId');
     const type = searchParams.get('type');
 
-    const user = await User.findOne({ authId }).populate({
-      path: 'transactions',
-      match: type && type !== 'all' ? { type } : {},
-      options: { sort: { date: -1 }, limit: 100 }
-    });
-
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    if (!authId) {
+      return NextResponse.json({ error: 'Missing authId' }, { status: 400 });
     }
 
-    return NextResponse.json(user.transactions);
+    const transactions = await Transaction.find({
+      ownerAuthId: authId,
+      ...(type && type !== 'all' ? { type } : {}),
+    })
+      .sort({ date: -1 })
+      .limit(100);
+
+    if (transactions.length === 0) {
+      const legacyUser = await User.findOne({ authId }).populate({
+        path: 'transactions',
+        match: type && type !== 'all' ? { type } : {},
+        options: { sort: { date: -1 }, limit: 100 },
+      });
+
+      if (legacyUser?.transactions?.length) {
+        const ids = legacyUser.transactions.map((item) => item._id);
+        await Transaction.updateMany(
+          { _id: { $in: ids }, ownerAuthId: { $exists: false } },
+          { $set: { ownerAuthId: authId } }
+        );
+        return NextResponse.json(legacyUser.transactions);
+      }
+    }
+
+    return NextResponse.json(transactions);
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -32,12 +50,16 @@ export async function POST(request) {
     const body = await request.json();
     const { authId, ...txnData } = body;
 
+    if (!authId) {
+      return NextResponse.json({ error: 'Missing authId' }, { status: 400 });
+    }
+
     const user = await User.findOne({ authId });
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    const transaction = await Transaction.create(txnData);
+    const transaction = await Transaction.create({ ...txnData, ownerAuthId: authId });
     user.transactions.push(transaction._id);
     await user.save();
 

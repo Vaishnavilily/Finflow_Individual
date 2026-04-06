@@ -1,40 +1,68 @@
 'use client';
 import { useEffect, useState } from 'react';
 import TopBar from '@/components/TopBar';
+import { useAuthUser } from '@/lib/useAuthUser';
 
 const CATEGORIES = ['Housing & Rent', 'Food & Dining', 'Transport', 'Entertainment', 'Shopping', 'Healthcare', 'Investments', 'Utilities', 'Education', 'Other'];
 const COLORS = ['#004c8c','#16a34a','#dc2626','#7c3aed','#d97706','#0891b2','#be185d','#0f172a','#ea580c','#64748b'];
 const THRESHOLDS = [60, 70, 75, 80, 85, 90];
 
 export default function BudgetPage() {
-  const [budgets, setBudgets] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { authUser, authReady } = useAuthUser();
+  const [budgets, setBudgets] = useState(null);
   const [form, setForm] = useState({ category: CATEGORIES[0], limit: '', alertThreshold: 80 });
   const [saving, setSaving] = useState(false);
 
   const fetchBudgets = async () => {
+    if (!authUser?.authId) {
+      setBudgets([]);
+      return;
+    }
+
     try {
-      const res = await fetch('/api/budgets');
+      const res = await fetch(`/api/budgets?authId=${encodeURIComponent(authUser.authId)}`);
       const data = await res.json();
       setBudgets(Array.isArray(data) ? data : []);
     } catch { /* ignore */ }
-    setLoading(false);
   };
 
-  useEffect(() => { fetchBudgets(); }, []);
+  useEffect(() => {
+    if (!authReady || !authUser?.authId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/budgets?authId=${encodeURIComponent(authUser.authId)}`);
+        const data = await res.json();
+        if (!cancelled) setBudgets(Array.isArray(data) ? data : []);
+      } catch {
+        if (!cancelled) setBudgets([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, authUser]);
 
-  const totalBudget = budgets.reduce((s, b) => s + b.limit, 0);
-  const totalSpent = budgets.reduce((s, b) => s + b.spent, 0);
+  const safeBudgets = Array.isArray(budgets) ? budgets : [];
+  const loading = Boolean(authReady && authUser?.authId && budgets === null);
+  const totalBudget = safeBudgets.reduce((s, b) => s + b.limit, 0);
+  const totalSpent = safeBudgets.reduce((s, b) => s + b.spent, 0);
   const remaining = totalBudget - totalSpent;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.limit) return;
+    if (!authUser?.authId) return;
     setSaving(true);
     await fetch('/api/budgets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, limit: Number(form.limit), alertThreshold: Number(form.alertThreshold) }),
+      body: JSON.stringify({
+        ...form,
+        limit: Number(form.limit),
+        alertThreshold: Number(form.alertThreshold),
+        authId: authUser.authId,
+      }),
     });
     setForm({ category: CATEGORIES[0], limit: '', alertThreshold: 80 });
     await fetchBudgets();
@@ -42,13 +70,14 @@ export default function BudgetPage() {
   };
 
   const handleDelete = async (id) => {
-    await fetch(`/api/budgets/${id}`, { method: 'DELETE' });
+    if (!authUser?.authId) return;
+    await fetch(`/api/budgets/${id}?authId=${encodeURIComponent(authUser.authId)}`, { method: 'DELETE' });
     await fetchBudgets();
   };
 
   const fmt = (n) => `₹${Number(n).toLocaleString('en-IN')}`;
 
-  const overspent = budgets.filter(b => b.spent > b.limit);
+  const overspent = safeBudgets.filter(b => b.spent > b.limit);
 
   return (
     <>
@@ -77,10 +106,10 @@ export default function BudgetPage() {
         <div className="two-col">
           <div className="card">
             <div className="card-title">Category Budgets</div>
-            {loading ? <p className="text-muted">Loading...</p> : budgets.length === 0 ? (
+            {loading ? <p className="text-muted">Loading...</p> : safeBudgets.length === 0 ? (
               <p className="text-muted" style={{ fontSize: 13 }}>No budgets yet. Add your first budget category →</p>
             ) : (
-              budgets.map((b, i) => {
+              safeBudgets.map((b, i) => {
                 const pct = b.limit > 0 ? Math.min((b.spent / b.limit) * 100, 100) : 0;
                 const over = b.spent > b.limit;
                 const color = over ? '#dc2626' : COLORS[i % COLORS.length];

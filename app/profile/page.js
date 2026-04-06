@@ -1,7 +1,8 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import TopBar from '@/components/TopBar';
 import Link from 'next/link';
+import { useAuthUser } from '@/lib/useAuthUser';
 
 const PROFILE = {
   name: 'User',
@@ -11,7 +12,7 @@ const PROFILE = {
   dob: '1990-01-15',
   city: 'Hyderabad',
   occupation: 'Software Engineer',
-  annualIncome: '10,00,000',
+  annualIncome: 1000000,
 };
 
 const STATS = [
@@ -31,12 +32,57 @@ const MENU_ITEMS = [
 ];
 
 export default function ProfilePage() {
+  const { authUser, authReady } = useAuthUser();
   const [editing, setEditing] = useState(false);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [profile, setProfile] = useState(PROFILE);
   const [form, setForm] = useState(PROFILE);
 
-  const handleSave = () => {
-    setProfile(form);
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!authReady) return;
+      if (!authUser?.authId) {
+        return;
+      }
+
+      const params = new URLSearchParams({
+        authId: authUser.authId,
+        email: authUser.email || '',
+        name: authUser.name || '',
+      });
+
+      const res = await fetch(`/api/profile?${params.toString()}`);
+      const data = await res.json();
+      const nextProfile = data?.profile
+        ? { ...PROFILE, ...data.profile, dob: data.profile.dob ? new Date(data.profile.dob).toISOString().split('T')[0] : '' }
+        : { ...PROFILE, ...(authUser || {}) };
+
+      setProfile(nextProfile);
+      setForm(nextProfile);
+      setProfileLoaded(true);
+    };
+
+    loadProfile();
+  }, [authReady, authUser]);
+
+  const loading = Boolean(authReady && authUser?.authId && !profileLoaded);
+
+  const handleSave = async () => {
+    if (!authUser?.authId) return;
+    setSaving(true);
+    const res = await fetch('/api/profile', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...form, authId: authUser.authId }),
+    });
+    const data = await res.json();
+    const saved = data?.profile
+      ? { ...PROFILE, ...data.profile, dob: data.profile.dob ? new Date(data.profile.dob).toISOString().split('T')[0] : '' }
+      : form;
+    setProfile(saved);
+    setForm(saved);
+    setSaving(false);
     setEditing(false);
   };
 
@@ -45,6 +91,16 @@ export default function ProfilePage() {
       <TopBar title="My Profile" />
       <div className="page-area">
 
+        {loading ? (
+          <div className="card">
+            <p className="text-muted">Loading profile...</p>
+          </div>
+        ) : !authUser?.authId ? (
+          <div className="card">
+            <p className="text-muted">We could not identify your login session. Please sign in again from the gateway app.</p>
+          </div>
+        ) : (
+        <>
         {/* Profile Header Card */}
         <div className="card mb-20" style={{ display: 'flex', alignItems: 'center', gap: 24, padding: '28px 28px' }}>
           <div style={{
@@ -98,7 +154,7 @@ export default function ProfilePage() {
                   { key: 'dob', label: 'Date of Birth', type: 'date' },
                   { key: 'city', label: 'City', type: 'text' },
                   { key: 'occupation', label: 'Occupation', type: 'text' },
-                  { key: 'annualIncome', label: 'Annual Income (₹)', type: 'text' },
+                  { key: 'annualIncome', label: 'Annual Income (₹)', type: 'number' },
                 ].map(f => (
                   <div className="form-group" key={f.key}>
                     <label className="form-label">{f.label}</label>
@@ -107,7 +163,9 @@ export default function ProfilePage() {
                   </div>
                 ))}
                 <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                  <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleSave}>Save Changes</button>
+                  <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleSave} disabled={saving}>
+                    {saving ? 'Saving...' : 'Save Changes'}
+                  </button>
                   <button className="btn btn-ghost" onClick={() => setEditing(false)}>Discard</button>
                 </div>
               </div>
@@ -117,7 +175,12 @@ export default function ProfilePage() {
                   { label: 'Full Name', value: profile.name },
                   { label: 'Email', value: profile.email },
                   { label: 'Phone', value: profile.phone },
-                  { label: 'Date of Birth', value: new Date(profile.dob).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) },
+                  {
+                    label: 'Date of Birth',
+                    value: profile.dob
+                      ? new Date(profile.dob).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
+                      : '—'
+                  },
                   { label: 'City', value: profile.city },
                   { label: 'Occupation', value: profile.occupation },
                   { label: 'Annual Income', value: `₹${profile.annualIncome}` },
@@ -177,6 +240,8 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+        </>
+        )}
       </div>
     </>
   );

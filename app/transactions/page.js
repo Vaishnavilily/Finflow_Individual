@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import TopBar from '@/components/TopBar';
+import { useAuthUser } from '@/lib/useAuthUser';
 
 const CATEGORIES = ['Income', 'Food', 'Housing', 'Transport', 'Shopping', 'Investment', 'Utilities', 'Healthcare', 'Entertainment', 'Loan', 'Education', 'Other'];
 
@@ -10,36 +11,53 @@ const categoryBadge = (cat) => {
 };
 
 export default function TransactionsPage() {
-  const [transactions, setTransactions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { authUser, authReady } = useAuthUser();
+  const [transactions, setTransactions] = useState(null);
   const [filter, setFilter] = useState('all');
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ description: '', category: 'Food', amount: '', type: 'expense', date: new Date().toISOString().split('T')[0] });
 
   const fetchTxns = async () => {
-    const res = await fetch('/api/transactions');
+    if (!authUser?.authId) {
+      setTransactions([]);
+      return;
+    }
+    const res = await fetch(`/api/transactions?authId=${encodeURIComponent(authUser.authId)}`);
     const data = await res.json();
     setTransactions(Array.isArray(data) ? data : []);
-    setLoading(false);
   };
 
-  useEffect(() => { fetchTxns(); }, []);
+  useEffect(() => {
+    if (!authReady || !authUser?.authId) return;
+    let cancelled = false;
+    (async () => {
+      const res = await fetch(`/api/transactions?authId=${encodeURIComponent(authUser.authId)}`);
+      const data = await res.json();
+      if (!cancelled) setTransactions(Array.isArray(data) ? data : []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, authUser]);
 
-  const filtered = filter === 'all' ? transactions : transactions.filter(t => t.type === filter);
+  const safeTransactions = Array.isArray(transactions) ? transactions : [];
+  const loading = Boolean(authReady && authUser?.authId && transactions === null);
+  const filtered = filter === 'all' ? safeTransactions : safeTransactions.filter(t => t.type === filter);
 
-  const totalCredits = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-  const totalDebits = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const totalCredits = safeTransactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const totalDebits = safeTransactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
   const netFlow = totalCredits - totalDebits;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.description || !form.amount) return;
+    if (!authUser?.authId) return;
     setSaving(true);
     await fetch('/api/transactions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, amount: Number(form.amount) }),
+      body: JSON.stringify({ ...form, amount: Number(form.amount), authId: authUser.authId }),
     });
     setForm({ description: '', category: 'Food', amount: '', type: 'expense', date: new Date().toISOString().split('T')[0] });
     setShowModal(false);
@@ -48,7 +66,8 @@ export default function TransactionsPage() {
   };
 
   const handleDelete = async (id) => {
-    await fetch(`/api/transactions/${id}`, { method: 'DELETE' });
+    if (!authUser?.authId) return;
+    await fetch(`/api/transactions/${id}?authId=${encodeURIComponent(authUser.authId)}`, { method: 'DELETE' });
     await fetchTxns();
   };
 
@@ -81,7 +100,7 @@ export default function TransactionsPage() {
           </div>
           <div className="stat-card">
             <div className="stat-label">Transactions</div>
-            <div className="stat-value">{transactions.length}</div>
+            <div className="stat-value">{safeTransactions.length}</div>
             <div className="stat-sub neutral">This month</div>
           </div>
           <div className="stat-card">

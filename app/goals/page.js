@@ -1,13 +1,14 @@
 'use client';
 import { useEffect, useState } from 'react';
 import TopBar from '@/components/TopBar';
+import { useAuthUser } from '@/lib/useAuthUser';
 
 const GOAL_CATS = ['Savings', 'Travel', 'Education', 'Emergency Fund', 'Retirement', 'Electronics', 'Vehicle', 'Home', 'Investment', 'Other'];
 const COLORS = ['#004c8c','#16a34a','#7c3aed','#d97706','#0891b2','#dc2626','#be185d','#ea580c'];
 
 export default function GoalsPage() {
-  const [goals, setGoals] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { authUser, authReady } = useAuthUser();
+  const [goals, setGoals] = useState(null);
   const [form, setForm] = useState({ name: '', targetAmount: '', currentAmount: '', category: GOAL_CATS[0], deadline: '' });
   const [saving, setSaving] = useState(false);
   const [addModal, setAddModal] = useState(false);
@@ -15,22 +16,42 @@ export default function GoalsPage() {
   const [depositAmt, setDepositAmt] = useState('');
 
   const fetchGoals = async () => {
-    const res = await fetch('/api/goals');
+    if (!authUser?.authId) {
+      setGoals([]);
+      return;
+    }
+    const res = await fetch(`/api/goals?authId=${encodeURIComponent(authUser.authId)}`);
     const data = await res.json();
     setGoals(Array.isArray(data) ? data : []);
-    setLoading(false);
   };
 
-  useEffect(() => { fetchGoals(); }, []);
+  useEffect(() => {
+    if (!authReady || !authUser?.authId) return;
+    let cancelled = false;
+    (async () => {
+      const res = await fetch(`/api/goals?authId=${encodeURIComponent(authUser.authId)}`);
+      const data = await res.json();
+      if (!cancelled) setGoals(Array.isArray(data) ? data : []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, authUser]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.name || !form.targetAmount) return;
+    if (!authUser?.authId) return;
     setSaving(true);
     await fetch('/api/goals', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, targetAmount: Number(form.targetAmount), currentAmount: Number(form.currentAmount || 0) }),
+      body: JSON.stringify({
+        ...form,
+        targetAmount: Number(form.targetAmount),
+        currentAmount: Number(form.currentAmount || 0),
+        authId: authUser.authId,
+      }),
     });
     setForm({ name: '', targetAmount: '', currentAmount: '', category: GOAL_CATS[0], deadline: '' });
     setAddModal(false);
@@ -39,27 +60,31 @@ export default function GoalsPage() {
   };
 
   const handleDelete = async (id) => {
-    await fetch(`/api/goals/${id}`, { method: 'DELETE' });
+    if (!authUser?.authId) return;
+    await fetch(`/api/goals/${id}?authId=${encodeURIComponent(authUser.authId)}`, { method: 'DELETE' });
     await fetchGoals();
   };
 
   const handleDeposit = async (id) => {
     if (!depositAmt) return;
+    if (!authUser?.authId) return;
     const goal = goals.find(g => g._id === id);
     await fetch(`/api/goals/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ currentAmount: goal.currentAmount + Number(depositAmt) }),
+      body: JSON.stringify({ currentAmount: goal.currentAmount + Number(depositAmt), authId: authUser.authId }),
     });
     setDepositId(null);
     setDepositAmt('');
     await fetchGoals();
   };
 
+  const safeGoals = Array.isArray(goals) ? goals : [];
+  const loading = Boolean(authReady && authUser?.authId && goals === null);
   const fmt = (n) => `₹${Number(n).toLocaleString('en-IN')}`;
-  const totalGoals = goals.reduce((s, g) => s + g.targetAmount, 0);
-  const totalSaved = goals.reduce((s, g) => s + g.currentAmount, 0);
-  const completed = goals.filter(g => g.currentAmount >= g.targetAmount).length;
+  const totalGoals = safeGoals.reduce((s, g) => s + g.targetAmount, 0);
+  const totalSaved = safeGoals.reduce((s, g) => s + g.currentAmount, 0);
+  const completed = safeGoals.filter(g => g.currentAmount >= g.targetAmount).length;
 
   return (
     <>
@@ -69,7 +94,7 @@ export default function GoalsPage() {
           <div className="stat-card">
             <div className="stat-label">Total Goal Target</div>
             <div className="stat-value">{fmt(totalGoals)}</div>
-            <div className="stat-sub neutral">{goals.length} active goals</div>
+            <div className="stat-sub neutral">{safeGoals.length} active goals</div>
           </div>
           <div className="stat-card">
             <div className="stat-label">Total Saved</div>
@@ -79,7 +104,7 @@ export default function GoalsPage() {
           <div className="stat-card">
             <div className="stat-label">Goals Completed</div>
             <div className="stat-value">{completed}</div>
-            <div className="stat-sub" style={{ color: 'var(--success)' }}>of {goals.length} total</div>
+            <div className="stat-sub" style={{ color: 'var(--success)' }}>of {safeGoals.length} total</div>
           </div>
         </div>
 
@@ -88,7 +113,7 @@ export default function GoalsPage() {
           <button className="btn btn-primary" onClick={() => setAddModal(true)}>+ Add Goal</button>
         </div>
 
-        {loading ? <p className="text-muted">Loading...</p> : goals.length === 0 ? (
+        {loading ? <p className="text-muted">Loading...</p> : safeGoals.length === 0 ? (
           <div className="card flex-center" style={{ flexDirection: 'column', gap: 12, padding: 40 }}>
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
             <p className="text-muted">No goals yet. Add your first financial goal!</p>
@@ -96,7 +121,7 @@ export default function GoalsPage() {
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
-            {goals.map((g, i) => {
+            {safeGoals.map((g, i) => {
               const pct = Math.min((g.currentAmount / g.targetAmount) * 100, 100);
               const color = COLORS[i % COLORS.length];
               const done = g.currentAmount >= g.targetAmount;
